@@ -12,8 +12,9 @@ import { createPicker } from './map.js';
 import { searchPlaces, searchNearby, SOURCE_LABEL } from './sitesearch.js';
 import {
   hasStoredSession, getUser, sendCode, verifyCode, signInWithPassword, signOut,
-  fetchSites, cachedSites, applySite,
+  fetchSites, cachedSites, applySite, fetchSiteDives,
 } from './logbook.js';
+import { summarizeDives } from './owndives.js';
 import { COMPASS, compass, compassToDeg, fmt, knToBft, weatherInfo } from './units.js';
 import { icon, hydrateIcons } from './icons.js';
 
@@ -25,6 +26,7 @@ const state = {
   settings: loadSettings(),
   selectedId: loadSelectedId(),
   data: null,
+  own: null, // { spotId, summary } – eigene Tauchgänge am gewählten Logbuch-Platz
   dayIndex: 0,
   loadToken: 0,
 };
@@ -90,6 +92,7 @@ function selectSpot(id) {
   state.selectedId = id;
   state.dayIndex = 0;
   state.data = null;
+  state.own = null;
   saveSelectedId(id);
   renderChips();
   load();
@@ -119,6 +122,7 @@ async function load(force = false) {
     return;
   }
   const token = ++state.loadToken;
+  loadOwnDives(spot);
   $('#btn-refresh')?.classList.add('spinning');
   if (!state.data) $('#status').textContent = 'Lade Vorhersage …';
   try {
@@ -135,6 +139,17 @@ async function load(force = false) {
     if (token === state.loadToken) $('#btn-refresh')?.classList.remove('spinning');
   }
 }
+
+// Eigene Tauchgänge laufen neben der Vorhersage her und dürfen sie nie aufhalten
+async function loadOwnDives(spot) {
+  if (!spot.logbookId) return;
+  const dives = await fetchSiteDives(spot.logbookId);
+  if (selectedSpot()?.id !== spot.id) return;
+  state.own = { spotId: spot.id, summary: summarizeDives(dives) };
+  if (state.data) render();
+}
+
+const ownSummary = (spot) => (state.own?.spotId === spot.id ? state.own.summary : null);
 
 function render() {
   renderSpotHead();
@@ -156,6 +171,15 @@ function waterInfo(spot, data) {
   if (data?.pegel) {
     const { last } = data.pegel;
     parts.push(`Messstation ${esc(spot.pegel.name)}: <strong>${fmt(last.value, 1)} °C</strong> <span class="muted">(${stamp(Date.parse(last.timestamp))})</span>`);
+  }
+  const own = ownSummary(spot);
+  if (own) {
+    const range = (top, bottom) => [top != null ? `${fmt(top, 0)} °C oben` : null, bottom != null ? `${fmt(bottom, 0)} °C unten` : null].filter(Boolean).join(' / ');
+    if (own.season) {
+      const n = own.season.count;
+      parts.push(`Deine Tauchgänge um diese Jahreszeit: <strong>${range(own.season.top, own.season.bottom)}</strong> <span class="muted">(${n} ${n === 1 ? 'Tauchgang' : 'Tauchgänge'}${own.season.depth != null ? `, Ø ${fmt(own.season.depth)} m tief` : ''}, ${own.season.years.join(', ')})</span>`);
+    }
+    parts.push(`Zuletzt hier getaucht: <strong>${range(own.last.top, own.last.bottom)}</strong> <span class="muted">(${shortDate(own.last.date)}${own.last.date.slice(0, 4)}${own.last.depth != null ? `, ${fmt(own.last.depth)} m` : ''})</span>`);
   }
   const mw = spot.manualWater;
   if (mw && (mw.surface != null || mw.depthTemp != null)) {
@@ -218,7 +242,7 @@ function renderNotes() {
     items.push('Wasserstand und Strömung stammen aus einem groben Modell (~8 km) und sind an der Küste ungenau – nur als Tendenz nutzen, nicht zur Navigation. Offizielle Gezeiten: <a href="https://www.bsh.de/DE/DATEN/Vorhersagen/Gezeiten/gezeiten_node.html" target="_blank" rel="noopener">BSH-Gezeitenvorhersage</a>.');
     items.push('Wassertemperatur „Modell“ ist die vorhergesagte Oberflächentemperatur; in Buchten und Häfen kann sie abweichen.');
   } else {
-    items.push('Für Seen gibt es keine Wassertemperatur-Vorhersage: angezeigt wird der letzte Messwert der gewählten Station bzw. dein eigener Eintrag. Sprungschicht und Tiefentemperatur sind nicht abgedeckt.');
+    items.push('Für Seen gibt es keine Wassertemperatur-Vorhersage: angezeigt wird der letzte Messwert der gewählten Station, sonst was dein Tauchcomputer hier um diese Jahreszeit gemessen hat (±30 Tage, alle Jahre), sonst dein eigener Eintrag.');
   }
   $('#notes').innerHTML = `<ul>${items.map((i) => `<li>${i}</li>`).join('')}</ul>`;
 }
@@ -248,6 +272,11 @@ function daySummary(day, i, spot, th) {
   if (water == null && state.data.pegel) {
     water = state.data.pegel.last.value;
     waterNote = 'gem.';
+  }
+  const own = ownSummary(spot);
+  if (water == null && own?.season?.top != null) {
+    water = own.season.top;
+    waterNote = 'Logbuch';
   }
   if (water == null && spot.manualWater?.surface != null) {
     water = spot.manualWater.surface;
@@ -285,7 +314,7 @@ function renderDays() {
           <dt>Wind</dt><dd title="${knToBft(s.windMax?.wind) ?? '–'} Bft">${fmt(s.windMax?.wind)} kn <span class="muted">${compass(s.windMax?.windDir)}</span></dd>
           <dt>Böen</dt><dd>${fmt(s.gustMax)} kn</dd>
           ${spot.type === 'meer' ? `<dt>Welle</dt><dd>${fmt(s.waveMax?.wave, 1)} m${s.waveMax?.wavePeriod != null ? ` · ${fmt(s.waveMax.wavePeriod)} s` : ''}</dd>` : ''}
-          <dt>Wasser</dt><dd>${s.water != null ? `${fmt(s.water, 1)} °C` : '–'}${s.waterNote ? ` <span class="muted small">${s.waterNote}</span>` : ''}</dd>
+          <dt>Wasser</dt><dd${s.waterNote === 'Logbuch' ? ' title="Was dein Tauchcomputer hier um diese Jahreszeit oben gemessen hat"' : ''}>${s.water == null ? '–' : s.waterNote === 'Logbuch' ? `~${fmt(s.water, 0)} °C` : `${fmt(s.water, 1)} °C`}${s.waterNote && s.waterNote !== 'Logbuch' ? ` <span class="muted small">${s.waterNote}</span>` : ''}</dd>
           <dt>Luft</dt><dd>${fmt(s.tMin)}–${fmt(s.tMax)} °C</dd>
         </dl>
       </button>`;
@@ -347,7 +376,7 @@ function renderDetail() {
     spot.type === 'meer'
       ? kennzahl(fmt(s.waveMax?.wave, 1), 'm', 'Welle max.', s.waveMax?.wavePeriod != null ? `Periode ${fmt(s.waveMax.wavePeriod)} s` : '')
       : kennzahl(`${fmt(s.tMin)}–${fmt(s.tMax)}`, '°C', 'Luft'),
-    kennzahl(s.water != null ? fmt(s.water, 1) : '–', s.water != null ? '°C' : '', 'Wasser', s.waterNote === 'gem.' ? 'Messwert Station' : s.waterNote === 'eigene' ? 'eigene Messung' : spot.type === 'meer' ? 'Modell, Oberfläche' : ''),
+    kennzahl(s.water != null ? fmt(s.water, 1) : '–', s.water != null ? '°C' : '', 'Wasser', s.waterNote === 'gem.' ? 'Messwert Station' : s.waterNote === 'eigene' ? 'eigene Messung' : s.waterNote === 'Logbuch' ? 'deine Tauchgänge, oben' : spot.type === 'meer' ? 'Modell, Oberfläche' : ''),
   ];
 
   const facts = [];
