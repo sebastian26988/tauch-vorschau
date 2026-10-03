@@ -1,4 +1,4 @@
-// Ampel-Bewertung: reine Funktionen ohne DOM-Zugriff (siehe rating.test.mjs)
+// Ampel-Bewertung: reine Funktionen ohne DOM-Zugriff (siehe tests/rating.test.mjs)
 import { inSector, knToBft, fmt } from './units.js';
 
 export const GREEN = 0;
@@ -16,6 +16,9 @@ export const DEFAULT_THRESHOLDS = {
     wave: [0.5, 1.0],
     swellHeight: 1.0, // lange Dünung ab dieser Höhe …
     swellPeriod: 8, // … und dieser Periode → mindestens gelb
+    // Oberflächenströmung aus dem Meeresmodell (~8 km Raster). Bewusst großzügig: Das Modell ist an der
+    // Küste grob, und Gezeitenströmung um Inseln ist echt, aber oft nur zeitweise.
+    current: [0.7, 1.5],
     onshoreFactor: 0.7, // Grenzwerte bei auflandigem Wind/Seegang × Faktor
   },
   see: {
@@ -56,11 +59,15 @@ export function rateHour(h, spot, th) {
   const windOnshore = isOnshore(spot, h.windDir);
   const windFactor = windOnshore ? th.onshoreFactor : 1;
   add('wind', classify(h.wind, th.wind, windFactor), h.wind, { onshore: windOnshore });
-  add('gust', classify(h.gust, th.gust, windFactor), h.gust, { onshore: windOnshore });
+  // Böen allein machen einen Tag nicht untauchbar – sie sind ein Hinweis, höchstens gelb.
+  // Wirklich ruppig wird es über den mittleren Wind, der bleibt bis rot.
+  add('gust', Math.min(classify(h.gust, th.gust, windFactor), YELLOW), h.gust, { onshore: windOnshore });
 
   if (spot.type === 'meer') {
     const waveOnshore = isOnshore(spot, h.waveDir);
     add('wave', classify(h.wave, th.wave, waveOnshore ? th.onshoreFactor : 1), h.wave, { onshore: waveOnshore });
+
+    add('current', classify(h.current, th.current ?? DEFAULT_THRESHOLDS.meer.current), h.current, { dir: h.currentDir });
 
     if (h.swell != null && h.swellPeriod != null && h.swell >= th.swellHeight && h.swellPeriod >= th.swellPeriod) {
       add('swell', YELLOW, h.swell, { extra: h.swellPeriod });
@@ -80,7 +87,7 @@ export function mergeReasons(reasonLists) {
     const cur = byKey.get(r.key);
     if (!cur || r.level > cur.level || (r.level === cur.level && (r.value ?? 0) > (cur.value ?? 0))) byKey.set(r.key, r);
   }
-  const order = ['storm', 'gust', 'wind', 'wave', 'swell'];
+  const order = ['storm', 'wind', 'wave', 'current', 'swell', 'gust'];
   return [...byKey.values()].sort((a, b) => b.level - a.level || order.indexOf(a.key) - order.indexOf(b.key));
 }
 
@@ -116,6 +123,7 @@ export function reasonShort(r) {
     case 'gust': return `Böen ${fmt(r.value)} kn${on}`;
     case 'wave': return `Welle ${fmt(r.value, 1)} m${on}`;
     case 'swell': return `Dünung ${fmt(r.value, 1)} m / ${fmt(r.extra)} s`;
+    case 'current': return `Strömung ${fmt(r.value, 1)} kn`;
     case 'storm': return 'Gewitter';
     default: return r.key;
   }
@@ -127,6 +135,7 @@ export function reasonText(r) {
     case 'wind': return `Wind ${fmt(r.value)} kn (${knToBft(r.value)} Bft${on})`;
     case 'gust': return `Böen ${fmt(r.value)} kn${r.onshore ? ' (auflandig)' : ''}`;
     case 'wave': return `Welle ${fmt(r.value, 1)} m${r.onshore ? ' (auflandig)' : ''}`;
+    case 'current': return `Strömung ${fmt(r.value, 1)} kn (Modell, Oberfläche)`;
     case 'swell': return `Lange Dünung ${fmt(r.value, 1)} m / ${fmt(r.extra)} s – Brandung am Einstieg`;
     case 'storm': return 'Gewitter';
     default: return r.key;
