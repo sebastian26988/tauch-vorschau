@@ -20,6 +20,8 @@ const SHELL = [
   './js/config.js',
   './js/logbook.js',
   './js/sitesearch.js',
+  './js/owndives.js',
+  './js/sync.js',
   './icons/logo.png',
   './icons/favicon-64.png',
   './icons/icon-192.png',
