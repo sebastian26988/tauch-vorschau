@@ -3,7 +3,9 @@
 Tauch-Bedingungs-Vorschau, ein einziger Nutzer. Code, Kommentare und Commit-Nachrichten auf Deutsch.
 Statische Web-App ohne Bauschritt; was im Repo liegt, wird so ausgeliefert.
 
-- Neue oder umbenannte App-Dateien in `sw.js` (`SHELL`) eintragen und `CACHE` hochzählen.
+- Neue oder umbenannte App-Dateien in `sw.js` (`SHELL`) eintragen. `CACHE` setzt die Veröffentlichung
+  selbst auf den Commit, von Hand hochzählen ist nicht nötig.
+- Tests: `npm test` (Node, ohne Abhängigkeiten). Laufen bei jedem PR und vor jeder Veröffentlichung.
 - Neue Ordner der App auch im Schritt „App zusammenstellen“ in `.github/workflows/deploy.yml` ergänzen.
 - Die Verbindung zum Tauchlogbuch (`js/config.js`, `js/logbook.js`) nur lesend nutzen.
   Eingriffe ins Logbuch (Schema, Daten) vorher mit dem Nutzer absprechen.

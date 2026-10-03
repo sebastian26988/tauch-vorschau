@@ -1,4 +1,4 @@
-import { loadConditions, nearestPegelStations } from './api.js';
+import { loadConditions, nearestPegelStations, pruneCache } from './api.js';
 import {
   loadSpots, saveSpots, loadSettings, saveSettings, loadSelectedId, saveSelectedId,
   blankSpot, exportJson, parseImport, EXAMPLE_SPOTS,
@@ -210,7 +210,9 @@ function renderStatus() {
 function renderNotes() {
   const spot = selectedSpot();
   const items = [
-    'Die Ampel bewertet Wind, Böen, Seegang und Gewitter im Tauchfenster. Sicht, Strömung vor Ort und deine Erfahrung fließen nicht ein.',
+    spot.type === 'meer'
+      ? 'Die Ampel bewertet Wind, Böen, Seegang, Strömung laut Modell und Gewitter im Tauchfenster. Sicht, die Strömung direkt am Platz und deine Erfahrung fließen nicht ein.'
+      : 'Die Ampel bewertet Wind, Böen und Gewitter im Tauchfenster. Sicht und deine Erfahrung fließen nicht ein.',
   ];
   if (spot.type === 'meer') {
     items.push('Wasserstand und Strömung stammen aus einem groben Modell (~8 km) und sind an der Küste ungenau – nur als Tendenz nutzen, nicht zur Navigation. Offizielle Gezeiten: <a href="https://www.bsh.de/DE/DATEN/Vorhersagen/Gezeiten/gezeiten_node.html" target="_blank" rel="noopener">BSH-Gezeitenvorhersage</a>.');
@@ -382,10 +384,11 @@ const TH_ROWS = {
   wind: { label: 'Wind (kn)', keys: ['wind.0', 'wind.1'], step: 1 },
   gust: { label: 'Böen (kn)', keys: ['gust.0', 'gust.1'], step: 1 },
   wave: { label: 'Welle (m)', keys: ['wave.0', 'wave.1'], step: 0.1 },
+  current: { label: 'Strömung (kn)', keys: ['current.0', 'current.1'], step: 0.1 },
   swell: { label: 'Lange Dünung ab (m / s)', keys: ['swellHeight', 'swellPeriod'], step: 0.1 },
   factor: { label: 'Faktor auflandig', keys: ['onshoreFactor'], step: 0.05 },
 };
-const ROWS_FOR = { meer: ['wind', 'gust', 'wave', 'swell', 'factor'], see: ['wind', 'gust', 'factor'] };
+const ROWS_FOR = { meer: ['wind', 'gust', 'wave', 'current', 'swell', 'factor'], see: ['wind', 'gust', 'factor'] };
 
 const getPath = (obj, path) => path.split('.').reduce((o, k) => o?.[k], obj);
 function setPath(obj, path, value) {
@@ -413,7 +416,7 @@ function renderThresholdGrid(grid, rows, values, placeholders) {
 
 // Teilweise ausgefüllte Paare (grün/gelb) mit den geerbten Werten ergänzen
 function fillPairs(values, inherited) {
-  for (const key of ['wind', 'gust', 'wave']) {
+  for (const key of ['wind', 'gust', 'wave', 'current']) {
     if (values[key]) values[key] = [values[key][0] ?? inherited[key][0], values[key][1] ?? inherited[key][1]];
   }
   return values;
@@ -673,7 +676,10 @@ spotForm.addEventListener('submit', (e) => {
   const own = readThresholdGrid($('.threshold-grid[data-scope="spot"]', f));
   const inherited = resolveThresholds(type, state.settings.thresholds);
   fillPairs(own, inherited);
-  if (type === 'see') delete own.wave;
+  if (type === 'see') {
+    delete own.wave;
+    delete own.current;
+  }
 
   const manual = { surface: numOrNull(f.mwSurface.value), depthTemp: numOrNull(f.mwDepthTemp.value), depth: numOrNull(f.mwDepth.value), date: f.mwDate.value || null };
   const spot = {
@@ -1077,6 +1083,7 @@ document.addEventListener('click', (e) => {
 
 hydrateIcons();
 applyTheme();
+pruneCache();
 
 window.addEventListener('online', () => state.data?.stale && load(true));
 

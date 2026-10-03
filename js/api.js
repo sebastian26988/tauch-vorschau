@@ -51,6 +51,35 @@ async function getJson(url, key, maxAge, force) {
   }
 }
 
+// Zwischengespeicherte Antworten, die niemand mehr braucht, entfernen. Jede Koordinate und jede
+// Station legt einen eigenen Eintrag an; ohne Aufräumen wüchse der Speicher mit jedem Platz, der je
+// angesehen wurde. Älter als eine Woche ist auch als Offline-Stand wertlos – die Vorhersage reicht
+// nur sieben Tage weit.
+export const CACHE_KEEP_MS = 7 * 24 * 60 * MIN;
+
+export function pruneCache(now = Date.now(), storage = globalThis.localStorage) {
+  let removed = 0;
+  try {
+    for (let i = storage.length - 1; i >= 0; i--) {
+      const key = storage.key(i);
+      if (!key?.startsWith('tbv.cache.')) continue;
+      let ts = null;
+      try {
+        ts = JSON.parse(storage.getItem(key))?.ts ?? null;
+      } catch {
+        // kaputter Eintrag – weg damit
+      }
+      if (ts == null || now - ts > CACHE_KEEP_MS) {
+        storage.removeItem(key);
+        removed++;
+      }
+    }
+  } catch {
+    // Speicher gesperrt – nichts zu tun
+  }
+  return removed;
+}
+
 const coordKey = (lat, lon) => `${lat.toFixed(3)},${lon.toFixed(3)}`;
 
 function fetchForecast(lat, lon, force) {
@@ -124,25 +153,22 @@ function pegelHourly(measurements) {
  */
 export async function loadConditions(spot, { force = false } = {}) {
   const warnings = [];
-  const forecast = await fetchForecast(spot.lat, spot.lon, force);
-
-  let marine = null;
-  if (spot.type === 'meer') {
-    try {
-      marine = await fetchMarine(spot.lat, spot.lon, force);
-    } catch (err) {
-      warnings.push(`Seegangsdaten nicht verfügbar (${err.message}).`);
-    }
-  }
-
-  let pegel = null;
-  if (spot.pegel?.uuid) {
-    try {
-      pegel = await fetchPegelWT(spot.pegel.uuid, force);
-    } catch (err) {
-      warnings.push(`Pegel ${spot.pegel.name}: Wassertemperatur nicht abrufbar (${err.message}).`);
-    }
-  }
+  // Alle Quellen gleichzeitig anfragen – nacheinander addierten sich die Wartezeiten
+  const [forecast, marine, pegel] = await Promise.all([
+    fetchForecast(spot.lat, spot.lon, force),
+    spot.type === 'meer'
+      ? fetchMarine(spot.lat, spot.lon, force).catch((err) => {
+        warnings.push(`Seegangsdaten nicht verfügbar (${err.message}).`);
+        return null;
+      })
+      : null,
+    spot.pegel?.uuid
+      ? fetchPegelWT(spot.pegel.uuid, force).catch((err) => {
+        warnings.push(`Pegel ${spot.pegel.name}: Wassertemperatur nicht abrufbar (${err.message}).`);
+        return null;
+      })
+      : null,
+  ]);
 
   const f = forecast.data.hourly;
   const m = marine?.data?.hourly;

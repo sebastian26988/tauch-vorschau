@@ -234,7 +234,8 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.015em; }
   .topbar, .tabbar { display: none; }
 }
 
-main { width: 100%; max-width: 1180px; padding: 20px 16px 96px; }
+/* Mittig im Inhaltsbereich wie im Logbuch; auf breiten Bildschirmen sonst links mit leerem Rand rechts */
+main { width: 100%; max-width: 1180px; margin-inline: auto; padding: 20px 16px 96px; }
 @media (min-width: 768px) { main { padding: 32px 32px 32px; } }
 
 /* ---------- Buttons ---------- */

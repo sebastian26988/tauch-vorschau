@@ -23,5 +23,5 @@ Jeder Push auf `main` lädt die App per GitHub Action zu Cloudflare Pages
 (`.github/workflows/deploy.yml`). Dafür braucht das Repo die Secrets
 `CLOUDFLARE_API_TOKEN` und `CLOUDFLARE_ACCOUNT_ID` – dieselben wie beim Tauchlogbuch.
 
-Nach Änderungen an App-Dateien die Cache-Version in `sw.js` (`CACHE = 'tbv-vN'`)
-hochzählen, sonst sieht die installierte App offline den alten Stand.
+Vor dem Hochladen laufen die Tests (`npm test`), und die Cache-Version in `sw.js` wird auf den
+Commit gesetzt – die installierte App holt sich so nach jeder Veröffentlichung den neuen Stand.

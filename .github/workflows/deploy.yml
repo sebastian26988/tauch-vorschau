@@ -37,14 +37,21 @@ jobs:
             exit 1
           fi
 
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Tests
+        run: npm test
+
+      # Die Cache-Version des Service-Workers bekommt den Commit: Jede Veröffentlichung räumt
+      # damit den alten Offline-Stand ab, ohne dass jemand die Nummer von Hand hochzählen muss.
       - name: App zusammenstellen
         run: |
           mkdir -p _site
           cp -r index.html sw.js manifest.webmanifest css js fonts icons _site/
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
+          sed -i "s/^const CACHE = '[^']*';/const CACHE = 'tbv-${GITHUB_SHA::8}';/" _site/sw.js
+          grep -q "const CACHE = 'tbv-${GITHUB_SHA::8}';" _site/sw.js
 
       - name: Nach Cloudflare Pages hochladen
         env:
