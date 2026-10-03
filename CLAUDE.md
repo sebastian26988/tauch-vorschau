@@ -15,5 +15,8 @@ Wie beim Tauchplatzkarten-Generator: Änderung auf einem Arbeitszweig, lokal pr�
 den Lauf „Web-App veröffentlichen“ beobachten und `tauch-vorschau.pages.dev` live prüfen.
 Dem Nutzer nur das Ergebnis melden.
 
-Der Nutzer arbeitet auch lokal (`C:\Users\Sebas\OneDrive\Dokumente\Wetter-Bedingungs-Vorschau`).
-Vor eigener Arbeit deshalb immer zuerst `main` frisch holen.
+Gearbeitet wird nur in der Cloud, dieses Repo ist der einzige Stand (Entscheidung vom 03.10.2026).
+Der alte Ordner auf dem PC (`C:\Users\Sebas\OneDrive\Dokumente\Wetter-Bedingungs-Vorschau`) ist
+eine veraltete Kopie und wird nicht mehr gepflegt. Trotzdem vor eigener Arbeit `main` frisch holen.
+
+Möglichst alles selbst erledigen; den Nutzer nur fragen, wenn es von hier aus nicht geht.
