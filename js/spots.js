@@ -63,10 +63,26 @@ function write(key, value) {
 // Leerer Speicher → leere Liste. Beispiel-Spots nur auf Wunsch (Einstellungen), damit nach einem
 // geleerten Browser-Speicher nicht plötzlich fremde Plätze statt der eigenen auftauchen.
 export const loadSpots = () => read(SPOTS_KEY, null) ?? [];
-export const saveSpots = (spots) => write(SPOTS_KEY, spots);
-
 export const loadSettings = () => read(SETTINGS_KEY, { thresholds: {} });
-export const saveSettings = (settings) => write(SETTINGS_KEY, settings);
+
+// Eigene Änderungen melden, damit der Abgleich (sync.js) sie hochlädt. Was vom Abgleich selbst
+// kommt, ist keine Änderung dieses Geräts und darf nicht gleich wieder zurückgeschickt werden.
+export const CHANGED_AT_KEY = 'tbv.sync.changedAt';
+function changed(fromSync) {
+  if (fromSync) return;
+  write(CHANGED_AT_KEY, Date.now());
+  globalThis.dispatchEvent?.(new Event('tbv:changed'));
+}
+
+export function saveSpots(spots, { fromSync = false } = {}) {
+  write(SPOTS_KEY, spots);
+  changed(fromSync);
+}
+
+export function saveSettings(settings, { fromSync = false } = {}) {
+  write(SETTINGS_KEY, settings);
+  changed(fromSync);
+}
 
 export const loadSelectedId = () => read(SELECTED_KEY, null);
 export const saveSelectedId = (id) => write(SELECTED_KEY, id);

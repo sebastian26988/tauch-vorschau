@@ -15,6 +15,7 @@ import {
   fetchSites, cachedSites, applySite, fetchSiteDives,
 } from './logbook.js';
 import { summarizeDives } from './owndives.js';
+import { startSync } from './sync.js';
 import { COMPASS, compass, compassToDeg, fmt, knToBft, weatherInfo } from './units.js';
 import { icon, hydrateIcons } from './icons.js';
 
@@ -1058,6 +1059,7 @@ lbForm.addEventListener('submit', async (e) => {
     else await verifyCode(lbForm.email.value, lbForm.code.value);
     rememberEmail();
     await showLbSites(await getUser());
+    sync.syncNow();
   } catch (err) {
     lbMessage(lbErrorText(err), true);
   }
@@ -1066,6 +1068,7 @@ lbForm.addEventListener('submit', async (e) => {
 $('#btn-lb-logout').addEventListener('click', async () => {
   await signOut().catch(() => {});
   showLbLogin();
+  sync.syncNow();
 });
 
 async function showLbSites(user) {
@@ -1238,6 +1241,25 @@ if (!hasSelection()) state.selectedId = state.spots[0]?.id ?? null;
 renderChips();
 load();
 syncLogbook();
+
+// Plätze und Grenzwerte zwischen Geräten abgleichen (nur mit Logbuch-Anmeldung)
+const sync = startSync({
+  getLocal: () => ({ spots: state.spots, settings: state.settings }),
+  applyRemote: ({ spots, settings }) => {
+    state.spots = Array.isArray(spots) ? spots : [];
+    state.settings = settings && typeof settings === 'object' ? { thresholds: {}, ...settings } : { thresholds: {} };
+    saveSpots(state.spots, { fromSync: true });
+    saveSettings(state.settings, { fromSync: true });
+    if (!hasSelection()) state.selectedId = state.spots[0]?.id ?? null;
+    state.data = null;
+    renderChips();
+    load();
+  },
+  onStatus: (text) => {
+    $('#sync-box').hidden = text == null;
+    $('#sync-status').textContent = text ?? '';
+  },
+});
 
 // Dauerhaften Speicher anfordern: Der Browser räumt die Plätze dann nicht von sich aus weg
 // (z. B. bei Platzmangel). Bewusstes Löschen der Websitedaten verhindert das nicht.

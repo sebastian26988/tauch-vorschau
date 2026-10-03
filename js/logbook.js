@@ -7,7 +7,7 @@ const SITES_CACHE_KEY = 'tbv.logbook.sites';
 let clientPromise = null;
 
 // SDK erst laden, wenn das Logbuch gebraucht wird – die App startet ohne diesen Umweg
-function client() {
+export function client() {
   clientPromise ??= import(SDK_URL)
     .then(({ createClient }) => createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
