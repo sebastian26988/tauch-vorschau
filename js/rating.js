@@ -59,7 +59,9 @@ export function rateHour(h, spot, th) {
   const windOnshore = isOnshore(spot, h.windDir);
   const windFactor = windOnshore ? th.onshoreFactor : 1;
   add('wind', classify(h.wind, th.wind, windFactor), h.wind, { onshore: windOnshore });
-  add('gust', classify(h.gust, th.gust, windFactor), h.gust, { onshore: windOnshore });
+  // Böen allein machen einen Tag nicht untauchbar – sie sind ein Hinweis, höchstens gelb.
+  // Wirklich ruppig wird es über den mittleren Wind, der bleibt bis rot.
+  add('gust', Math.min(classify(h.gust, th.gust, windFactor), YELLOW), h.gust, { onshore: windOnshore });
 
   if (spot.type === 'meer') {
     const waveOnshore = isOnshore(spot, h.waveDir);
@@ -85,7 +87,7 @@ export function mergeReasons(reasonLists) {
     const cur = byKey.get(r.key);
     if (!cur || r.level > cur.level || (r.level === cur.level && (r.value ?? 0) > (cur.value ?? 0))) byKey.set(r.key, r);
   }
-  const order = ['storm', 'gust', 'wind', 'wave', 'current', 'swell'];
+  const order = ['storm', 'wind', 'wave', 'current', 'swell', 'gust'];
   return [...byKey.values()].sort((a, b) => b.level - a.level || order.indexOf(a.key) - order.indexOf(b.key));
 }
 

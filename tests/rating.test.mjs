@@ -42,6 +42,13 @@ test('alte gespeicherte Grenzwerte ohne Strömung bekommen den Standard', () => 
   assert.deepEqual(resolveThresholds('meer', alt).current, DEFAULT_THRESHOLDS.meer.current);
 });
 
+test('Böen allein ergeben höchstens gelb', () => {
+  const r = rateHour({ ...ruhig, gust: 40 }, meer, thMeer);
+  assert.equal(r.level, YELLOW);
+  assert.equal(r.reasons[0].key, 'gust');
+  assert.equal(rateHour({ ...ruhig, gust: 40, wind: 20 }, meer, thMeer).level, RED);
+});
+
 test('lange Dünung macht mindestens gelb', () => {
   assert.equal(rateHour({ ...ruhig, swell: 1.2, swellPeriod: 10 }, meer, thMeer).level, YELLOW);
 });

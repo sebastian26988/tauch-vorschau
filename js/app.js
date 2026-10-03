@@ -382,7 +382,8 @@ function renderDetail() {
 
 const TH_ROWS = {
   wind: { label: 'Wind (kn)', keys: ['wind.0', 'wind.1'], step: 1 },
-  gust: { label: 'Böen (kn)', keys: ['gust.0', 'gust.1'], step: 1 },
+  // Böen ergeben höchstens gelb – deshalb nur eine Grenze
+  gust: { label: 'Böen (kn), darüber gelb', keys: ['gust.0'], step: 1 },
   wave: { label: 'Welle (m)', keys: ['wave.0', 'wave.1'], step: 0.1 },
   current: { label: 'Strömung (kn)', keys: ['current.0', 'current.1'], step: 0.1 },
   swell: { label: 'Lange Dünung ab (m / s)', keys: ['swellHeight', 'swellPeriod'], step: 0.1 },
