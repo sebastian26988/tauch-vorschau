@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="de" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Tauch-Vorschau</title>
+  <meta name="description" content="Wind, Seegang und Wassertemperatur der nächsten 7 Tage für deine Tauchplätze – mit Ampel-Bewertung.">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Vorschau">
+  <script src="js/theme-init.js"></script>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/favicon-64.png" type="image/png" sizes="64x64">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180.png">
+  <link rel="preload" href="fonts/manrope.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="css/style.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <!-- Desktop: Seitenleiste als Petrol-Fläche, wie im Logbuch -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img class="logo" src="icons/logo.png" alt="" width="32" height="32">
+        <span class="brand-text">
+          <span class="brand-title">Tauch-Vorschau</span>
+          <span class="brand-sub">Tauchbedingungen · 7 Tage</span>
+        </span>
+      </div>
+      <nav class="sidebar-nav" aria-label="Navigation">
+        <button type="button" class="nav-item" data-nav="vorschau" aria-current="page"><span data-icon="gauge"></span>Vorschau</button>
+        <button type="button" class="nav-item" data-nav="logbuch"><span data-icon="book"></span>Logbuch-Plätze</button>
+        <button type="button" class="nav-item" data-nav="neu"><span data-icon="plus"></span>Neuer Tauchplatz</button>
+        <button type="button" class="nav-item" data-nav="einstellungen"><span data-icon="settings"></span>Einstellungen</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="theme-toggle" role="radiogroup" aria-label="Erscheinungsbild">
+          <button type="button" role="radio" data-theme-choice="system" title="Automatisch" aria-label="Automatisch"><span data-icon="auto" data-size="16"></span></button>
+          <button type="button" role="radio" data-theme-choice="light" title="Hell" aria-label="Hell"><span data-icon="sun" data-size="16"></span></button>
+          <button type="button" role="radio" data-theme-choice="dark" title="Dunkel" aria-label="Dunkel"><span data-icon="moon" data-size="16"></span></button>
+        </div>
+      </div>
+    </aside>
+
+    <div class="content">
+      <!-- Mobil: Kopfzeile, da die Seitenleiste entfällt -->
+      <header class="topbar">
+        <div class="topbar-brand">
+          <img class="logo" src="icons/logo.png" alt="" width="28" height="28">
+          <span class="brand-text">
+            <span class="brand-title">Tauch-Vorschau</span>
+            <span class="brand-sub">Tauchbedingungen · 7 Tage</span>
+          </span>
+        </div>
+        <div class="theme-toggle" role="radiogroup" aria-label="Erscheinungsbild">
+          <button type="button" role="radio" data-theme-choice="system" title="Automatisch" aria-label="Automatisch"><span data-icon="auto" data-size="16"></span></button>
+          <button type="button" role="radio" data-theme-choice="light" title="Hell" aria-label="Hell"><span data-icon="sun" data-size="16"></span></button>
+          <button type="button" role="radio" data-theme-choice="dark" title="Dunkel" aria-label="Dunkel"><span data-icon="moon" data-size="16"></span></button>
+        </div>
+      </header>
+
+      <main>
+        <nav id="spot-chips" class="chips" aria-label="Tauchplätze"></nav>
+        <section id="spot-head" class="spot-head"></section>
+        <div id="status" class="status" role="status"></div>
+        <div id="warnings"></div>
+        <section id="days" class="days" aria-label="7-Tage-Übersicht"></section>
+        <section id="detail" class="detail" aria-live="polite"></section>
+        <section id="notes" class="notes"></section>
+        <footer class="footer">
+          <p>Planungshilfe – ersetzt keine Beurteilung der Bedingungen vor Ort.</p>
+          <p>Wetter- und Seegangsdaten: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0) · Wassertemperatur: <a href="https://www.pegelonline.wsv.de/" target="_blank" rel="noopener">PEGELONLINE</a> (WSV) · Tauchplätze &amp; Karte: © OpenStreetMap-Mitwirkende (ODbL)</p>
+        </footer>
+      </main>
+
+      <!-- Mobil: Reiterleiste unten, in Daumenreichweite -->
+      <nav class="tabbar" aria-label="Navigation">
+      <button type="button" class="tab-item" data-nav="vorschau" aria-current="page"><span data-icon="gauge"></span>Vorschau</button>
+      <button type="button" class="tab-item" data-nav="logbuch"><span data-icon="book"></span>Logbuch</button>
+      <button type="button" class="tab-item" data-nav="neu"><span data-icon="plus"></span>Neuer Platz</button>
+      <button type="button" class="tab-item" data-nav="einstellungen"><span data-icon="settings"></span>Einstellungen</button>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Spot-Editor -->
+  <dialog id="dlg-spot" class="dialog">
+    <form id="spot-form" novalidate>
+      <header class="dialog-head">
+        <h2 id="spot-form-title">Tauchplatz</h2>
+        <button type="button" class="btn-icon" data-close aria-label="Schließen"><span data-icon="close" data-size="18"></span></button>
+      </header>
+      <div class="dialog-body">
+        <p id="lb-linked" class="info" hidden>
+          Verknüpft mit deinem Logbuch – Name, Position und Gewässer kommen von dort und werden automatisch aktualisiert.
+          <button type="button" id="btn-unlink" class="link-btn">Verknüpfung lösen</button>
+        </p>
+        <div class="field search-field" id="search-field">
+          <span>Tauchplatz suchen <small class="muted">– Logbuch, Tauchplatzverzeichnis, Diveboard, Karte oder Koordinate</small></span>
+          <input type="search" id="site-search" placeholder="z. B. „Hemmoor“, „Zenobia“ oder 54.45, 10.19" autocomplete="off">
+          <div id="search-results" class="search-results" role="listbox"></div>
+        </div>
+        <label class="field">
+          <span>Name</span>
+          <input name="name" required maxlength="60" placeholder="z. B. Steinwarder Mole">
+        </label>
+
+        <fieldset class="field segmented">
+          <legend>Gewässer</legend>
+          <label><input type="radio" name="type" value="meer"> Meer / Küste</label>
+          <label><input type="radio" name="type" value="see"> Binnensee</label>
+        </fieldset>
+
+        <div class="field">
+          <span>Position <small class="muted" id="picker-hint">– in die Karte tippen oder Marker ziehen · graue Punkte: bekannte Tauchplätze in der Nähe</small></span>
+          <div id="picker" class="picker"></div>
+          <div class="row">
+            <label class="field compact"><span>Breite</span><input name="lat" type="number" step="0.0001" min="-90" max="90" required></label>
+            <label class="field compact"><span>Länge</span><input name="lon" type="number" step="0.0001" min="-180" max="180" required></label>
+          </div>
+        </div>
+
+        <div class="field">
+          <span>Ufer offen nach <small class="muted">– Wind/Wellen aus diesem Sektor gelten als auflandig und werden strenger bewertet</small></span>
+          <div class="row">
+            <label class="field compact"><span>von</span><select name="expFrom"></select></label>
+            <label class="field compact"><span>bis (im Uhrzeigersinn)</span><select name="expTo"></select></label>
+          </div>
+        </div>
+
+        <div class="field">
+          <span>Tauchfenster</span>
+          <div class="row">
+            <label class="field compact"><span>ab Uhr</span><input name="winStart" type="number" min="0" max="23" required></label>
+            <label class="field compact"><span>bis Uhr</span><input name="winEnd" type="number" min="0" max="23" required></label>
+          </div>
+        </div>
+
+        <div class="field">
+          <span>Wassertemperatur-Messstation <small class="muted">(PEGELONLINE, nächstgelegene)</small></span>
+          <div id="pegel-list" class="pegel-list"><p class="muted">Wird gesucht …</p></div>
+        </div>
+
+        <details class="field" id="manual-water">
+          <summary>Wassertemperatur manuell eintragen</summary>
+          <p class="muted small">Für Seen ohne Messstation – z. B. Wert aus deinem Tauchcomputer oder von der Tauchbasis.</p>
+          <div class="row">
+            <label class="field compact"><span>Oberfläche °C</span><input name="mwSurface" type="number" step="0.1"></label>
+            <label class="field compact"><span>in Tiefe °C</span><input name="mwDepthTemp" type="number" step="0.1"></label>
+            <label class="field compact"><span>Tiefe m</span><input name="mwDepth" type="number" step="1" min="0"></label>
+          </div>
+          <label class="field compact"><span>gemessen am</span><input name="mwDate" type="date"></label>
+        </details>
+
+        <details class="field" id="own-thresholds">
+          <summary>Eigene Grenzwerte für diesen Platz</summary>
+          <p class="muted small">Leer lassen = globale Grenzwerte. Jeweils: bis „grün“ / bis „gelb“, darüber rot.</p>
+          <div class="threshold-grid" data-scope="spot"></div>
+        </details>
+      </div>
+      <footer class="dialog-foot">
+        <button type="button" id="btn-delete-spot" class="btn btn-danger">Löschen</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Einstellungen -->
+  <dialog id="dlg-settings" class="dialog">
+    <form id="settings-form" novalidate>
+      <header class="dialog-head">
+        <h2>Grenzwerte &amp; Daten</h2>
+        <button type="button" class="btn-icon" data-close aria-label="Schließen"><span data-icon="close" data-size="18"></span></button>
+      </header>
+      <div class="dialog-body">
+        <p class="muted small">Jeweils: bis „grün“ / bis „gelb“, darüber rot. Bei auflandigem Wind bzw. Seegang werden die Grenzen mit dem Faktor multipliziert.</p>
+        <h3>Meer / Küste</h3>
+        <div class="threshold-grid" data-scope="meer"></div>
+        <h3>Binnensee</h3>
+        <div class="threshold-grid" data-scope="see"></div>
+        <div class="row">
+          <button type="button" id="btn-reset-thresholds" class="btn">Standardwerte</button>
+        </div>
+        <h3>Tauchplätze sichern &amp; teilen</h3>
+        <div class="row wrap">
+          <button type="button" id="btn-export" class="btn">Exportieren (JSON)</button>
+          <label class="btn">Importieren …<input id="file-import" type="file" accept="application/json,.json" hidden></label>
+          <button type="button" id="btn-examples" class="btn">Beispiel-Spots hinzufügen</button>
+        </div>
+      </div>
+      <footer class="dialog-foot">
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </footer>
+    </form>
+  </dialog>
+  <!-- Logbuch -->
+  <dialog id="dlg-logbook" class="dialog">
+    <div class="dialog-shell">
+      <header class="dialog-head">
+        <h2>Tauchplätze aus dem Logbuch</h2>
+        <button type="button" class="btn-icon" data-close aria-label="Schließen"><span data-icon="close" data-size="18"></span></button>
+      </header>
+      <div class="dialog-body">
+        <p id="lb-loading" class="muted">Verbinde mit dem Logbuch …</p>
+
+        <form id="lb-login" hidden novalidate>
+          <p class="muted small">Melde dich mit deinem Logbuch-Konto an. Die Vorschau liest deine Tauchplätze nur – im Logbuch wird nichts verändert.</p>
+          <label class="field"><span>E-Mail</span><input name="email" type="email" autocomplete="email" required></label>
+          <div id="lb-code-step">
+            <div class="row wrap">
+              <button type="button" id="btn-lb-send" class="btn btn-primary">Code per E-Mail senden</button>
+              <button type="button" id="btn-lb-pw-toggle" class="link-btn">Mit Passwort anmelden</button>
+            </div>
+            <div id="lb-code-entry" hidden>
+              <label class="field"><span>Code aus der E-Mail</span><input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10"></label>
+              <button type="submit" class="btn btn-primary">Anmelden</button>
+            </div>
+          </div>
+          <div id="lb-pw-step" hidden>
+            <label class="field"><span>Passwort</span><input name="password" type="password" autocomplete="current-password"></label>
+            <div class="row wrap">
+              <button type="submit" class="btn btn-primary">Anmelden</button>
+              <button type="button" id="btn-lb-code-toggle" class="link-btn">Stattdessen Code per E-Mail</button>
+            </div>
+          </div>
+          <p id="lb-msg" class="small" role="status"></p>
+        </form>
+
+        <div id="lb-sites" hidden>
+          <div class="row lb-account">
+            <span class="muted small" id="lb-user"></span>
+            <span class="spacer"></span>
+            <button type="button" id="btn-lb-logout" class="link-btn">Abmelden</button>
+          </div>
+          <p class="muted small">Markiere die Plätze, die in der Vorschau erscheinen sollen (Hallenbäder sind ausgeblendet).</p>
+          <input type="search" id="lb-filter" class="filter-input" placeholder="Filtern nach Name, Ort oder Land" autocomplete="off">
+          <div class="lb-box">
+            <label class="lb-all"><input type="checkbox" id="lb-all"> <span id="lb-all-label">Alle auswählen</span></label>
+            <div id="lb-list" class="lb-list"></div>
+          </div>
+        </div>
+      </div>
+      <footer class="dialog-foot">
+        <span class="muted small" id="lb-count"></span>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Abbrechen</button>
+        <button type="button" id="btn-lb-apply" class="btn btn-primary" disabled>Übernehmen</button>
+      </footer>
+    </div>
+  </dialog>
+</body>
+</html>
