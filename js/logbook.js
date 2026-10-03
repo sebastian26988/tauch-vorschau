@@ -62,6 +62,10 @@ export async function signOut() {
   await sb.auth.signOut();
   try {
     localStorage.removeItem(SITES_CACHE_KEY);
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(DIVES_CACHE_PREFIX)) localStorage.removeItem(key);
+    }
   } catch {
     // egal
   }
@@ -132,4 +136,37 @@ export async function fetchSites() {
 /** Übernimmt Name, Position und Typ aus dem Logbuch in einen verknüpften Spot; lokale Einstellungen bleiben. */
 export function applySite(spot, site) {
   return { ...spot, name: site.name, lat: site.lat, lon: site.lon, type: spot.typeLocked ? spot.type : site.type, source: 'logbuch', logbookId: site.id };
+}
+
+const DIVES_CACHE_PREFIX = 'tbv.logbook.dives.';
+
+/**
+ * Eigene Tauchgänge an einem Logbuch-Platz – nur die Felder für die Wassertemperatur.
+ * Offline oder abgemeldet: letzter gespeicherter Stand, sonst null.
+ */
+export async function fetchSiteDives(siteId) {
+  const key = DIVES_CACHE_PREFIX + siteId;
+  try {
+    if (!hasStoredSession()) throw new Error('nicht angemeldet');
+    const sb = await client();
+    const { data, error } = await sb
+      .from('dives')
+      .select('started_at, max_depth_m, water_temp_min_c, water_temp_max_c')
+      .eq('dive_site_id', siteId)
+      .order('started_at', { ascending: false })
+      .limit(500);
+    if (error) throw error;
+    try {
+      localStorage.setItem(key, JSON.stringify({ ts: Date.now(), dives: data }));
+    } catch {
+      // ohne Offline-Kopie weiter
+    }
+    return data;
+  } catch {
+    try {
+      return JSON.parse(localStorage.getItem(key))?.dives ?? null;
+    } catch {
+      return null;
+    }
+  }
 }
