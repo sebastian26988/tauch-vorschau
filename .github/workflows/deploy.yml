@@ -53,8 +53,39 @@ jobs:
           sed -i "s/^const CACHE = '[^']*';/const CACHE = 'tbv-${GITHUB_SHA::8}';/" _site/sw.js
           grep -q "const CACHE = 'tbv-${GITHUB_SHA::8}';" _site/sw.js
 
+      # Das Projekt wurde ursprünglich vom PC aus angelegt und hat dort einen eigenen Produktionszweig.
+      # Hochgeladen mit einem anderen Zweignamen landet der Stand nur in einer Vorschau-Adresse,
+      # nicht auf tauch-vorschau.pages.dev. Deshalb den Zweig beim Projekt nachfragen statt raten.
+      - name: Produktionszweig ermitteln
+        id: zweig
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          zweig=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/tauch-vorschau" \
+            | jq -r '.result.production_branch')
+          if [ -z "$zweig" ] || [ "$zweig" = "null" ]; then
+            echo "::error::Produktionszweig des Pages-Projekts nicht ermittelbar"
+            exit 1
+          fi
+          echo "Produktionszweig: $zweig"
+          echo "name=$zweig" >> "$GITHUB_OUTPUT"
+
       - name: Nach Cloudflare Pages hochladen
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@4 pages deploy _site --project-name=tauch-vorschau --branch=main --commit-dirty=true
+        run: npx --yes wrangler@4 pages deploy _site --project-name=tauch-vorschau --branch="${{ steps.zweig.outputs.name }}" --commit-dirty=true
+
+      # Prüfen, dass der neue Stand wirklich unter der Hauptadresse ausgeliefert wird
+      - name: Live prüfen
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS https://tauch-vorschau.pages.dev/sw.js | grep -q "tbv-${GITHUB_SHA::8}"; then
+              echo "Live: tbv-${GITHUB_SHA::8}"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::tauch-vorschau.pages.dev liefert nicht den neuen Stand aus"
+          exit 1
