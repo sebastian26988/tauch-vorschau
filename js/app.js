@@ -31,7 +31,11 @@ const state = {
   loadToken: 0,
 };
 
+// Pseudo-Auswahl für die Übersicht aller Plätze
+const OVERVIEW_ID = '__uebersicht';
+const isOverview = () => state.selectedId === OVERVIEW_ID && state.spots.length > 1;
 const selectedSpot = () => state.spots.find((s) => s.id === state.selectedId) ?? null;
+const hasSelection = () => !!selectedSpot() || isOverview();
 const thresholdsFor = (spot) => resolveThresholds(spot.type, state.settings.thresholds, spot.thresholds);
 
 // ---------- Zeit & Format ----------
@@ -71,7 +75,10 @@ const BOOK_ICON = icon('book', 14);
 
 function renderChips() {
   const nav = $('#spot-chips');
-  nav.innerHTML = state.spots.map((s) => `
+  const overview = state.spots.length > 1
+    ? `<button class="chip chip-overview" data-id="${OVERVIEW_ID}" aria-pressed="${state.selectedId === OVERVIEW_ID}">${icon('gauge', 14)}Alle Plätze</button>`
+    : '';
+  nav.innerHTML = overview + state.spots.map((s) => `
     <button class="chip" data-id="${esc(s.id)}" aria-pressed="${s.id === state.selectedId}">
       ${s.source === 'logbuch' ? BOOK_ICON : ''}${esc(s.name)} <span class="tag">${s.type === 'see' ? 'See' : 'Meer'}</span>
     </button>`).join('') + '<button class="chip chip-add" id="btn-add-spot">+ Tauchplatz</button>';
@@ -88,9 +95,9 @@ $('#spot-chips').addEventListener('click', (e) => {
   if (chip && chip.dataset.id !== state.selectedId) selectSpot(chip.dataset.id);
 });
 
-function selectSpot(id) {
+function selectSpot(id, dayIndex = 0) {
   state.selectedId = id;
-  state.dayIndex = 0;
+  state.dayIndex = dayIndex;
   state.data = null;
   state.own = null;
   saveSelectedId(id);
@@ -101,6 +108,9 @@ function selectSpot(id) {
 // ---------- Laden ----------
 
 async function load(force = false) {
+  if (isOverview()) return loadOverview(force);
+  // Übersicht gewählt, aber nur noch ein Platz übrig: auf diesen Platz wechseln
+  if (state.selectedId === OVERVIEW_ID) state.selectedId = state.spots[0]?.id ?? null;
   const spot = selectedSpot();
   renderSpotHead();
   if (!spot) {
@@ -139,6 +149,109 @@ async function load(force = false) {
     if (token === state.loadToken) $('#btn-refresh')?.classList.remove('spinning');
   }
 }
+
+// ---------- Übersicht aller Plätze ----------
+
+// Mehrere Plätze gleichzeitig laden, aber nicht alle auf einmal – bei vielen Logbuch-Plätzen
+// würden sonst Dutzende Anfragen gleichzeitig an Open-Meteo gehen.
+async function mapLimited(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+// Ortszeit am Platz als "YYYY-MM-DDTHH:MM"
+const localNow = (offsetSeconds) => new Date(Date.now() + (offsetSeconds ?? 0) * 1000).toISOString().slice(0, 16);
+
+async function loadOverview(force = false) {
+  const token = ++state.loadToken;
+  $('#spot-head').innerHTML = `
+    <div>
+      <h1>Alle Plätze</h1>
+      <div class="meta">Ampel je Tag im Tauchfenster des Platzes · Feld antippen für Details</div>
+    </div>
+    <div class="head-actions">
+      <button class="btn-icon bordered" id="btn-refresh" title="Daten neu laden" aria-label="Daten neu laden">${icon('refresh', 18)}</button>
+    </div>`;
+  $('#btn-refresh').onclick = () => load(true);
+  $('#btn-refresh').classList.add('spinning');
+  $('#status').textContent = 'Lade Vorhersagen …';
+  $('#warnings').innerHTML = '';
+  $('#days').innerHTML = '';
+  $('#notes').innerHTML = '';
+  const results = await mapLimited(state.spots, 4, (spot) => loadConditions(spot, { force }).then((data) => ({ spot, data }), (err) => ({ spot, error: err })));
+  if (token !== state.loadToken) return;
+  $('#btn-refresh').classList.remove('spinning');
+  renderOverview(results);
+}
+
+function renderOverview(results) {
+  const ok = results.filter((r) => r.data);
+  if (!ok.length) {
+    $('#status').textContent = '';
+    $('#detail').innerHTML = '<p class="warning error">Keine Vorhersage abrufbar. Bist du offline?</p>';
+    return;
+  }
+  const oldest = Math.min(...ok.map((r) => r.data.ts));
+  $('#status').innerHTML = ok.some((r) => r.data.stale) ? `<span class="offline">Offline</span> – letzter Stand vom ${stamp(oldest)}` : `Aktualisiert ${stamp(oldest)}`;
+
+  // Spalten: die Tage des ersten Platzes; alle Plätze haben dieselben 7 Kalendertage (Ortszeit)
+  const dates = groupDays(ok[0].data.hours).map((d) => d.date);
+  const rows = results.map(({ spot, data, error }) => {
+    if (!data) return { spot, error, cells: [] };
+    const now = localNow(data.utcOffsetSeconds);
+    const byDate = new Map(groupDays(data.hours).map((d) => [d.date, d]));
+    const th = thresholdsFor(spot);
+    const cells = dates.map((date) => {
+      const day = byDate.get(date);
+      if (!day) return null;
+      return rateDay(day.hours, spot, th, date === now.slice(0, 10) ? now : null);
+    });
+    return { spot, cells };
+  });
+
+  // Je Tag den besten Platz hervorheben – das ist die Frage, mit der man hier hinschaut
+  const bestPerDay = dates.map((_, i) => {
+    const levels = rows.map((r) => r.cells[i]?.level).filter((l) => l != null);
+    // Nur hervorheben, wenn es Unterschiede gibt – sind alle gleich gut, ist keiner „der beste“
+    return levels.length && Math.min(...levels) < Math.max(...levels) ? Math.min(...levels) : null;
+  });
+
+  const head = `<tr><th scope="col" class="ov-spot">Platz</th>${dates.map((d, i) => `<th scope="col">${dayLabel(d, i)}</th>`).join('')}</tr>`;
+  const body = rows.map(({ spot, cells, error }) => `
+    <tr>
+      <th scope="row" class="ov-spot">
+        <button type="button" class="ov-name" data-id="${esc(spot.id)}" data-day="0">${spot.source === 'logbuch' ? BOOK_ICON : ''}${esc(spot.name)}</button>
+        <span class="tag">${spot.type === 'see' ? 'See' : 'Meer'}</span>
+      </th>
+      ${error ? `<td colspan="${dates.length}" class="muted small">nicht abrufbar (${esc(error.message)})</td>` : cells.map((c, i) => c ? `
+        <td>
+          <button type="button" class="ov-cell lvl-${LEVEL_CLASS[c.level]}${c.level === bestPerDay[i] && c.level < 2 ? ' best' : ''}" data-id="${esc(spot.id)}" data-day="${i}"
+            title="${esc(`${spot.name}, ${dayLabel(dates[i], i)}: ${LEVEL_LABEL[c.level]}${c.reasons.length ? ` – ${c.reasons.map(reasonText).join(', ')}` : ''}`)}">
+            <span class="ov-level">${LEVEL_LABEL[c.level]}</span>
+            ${c.reasons.length ? `<span class="ov-reason">${esc(reasonShort(c.reasons[0]))}</span>` : ''}
+          </button>
+        </td>` : '<td></td>').join('')}
+    </tr>`).join('');
+
+  $('#detail').innerHTML = `
+    <div class="karte ov-card">
+      <div class="ov-scroll"><table class="ov-table">${head}${body}</table></div>
+      <p class="muted small ov-legend">Umrandet: bester Platz des Tages. Grenzwerte, Uferrichtung und Tauchfenster gelten je Platz.</p>
+    </div>`;
+}
+
+$('#detail').addEventListener('click', (e) => {
+  const btn = e.target.closest('.ov-cell, .ov-name');
+  if (btn) selectSpot(btn.dataset.id, Number(btn.dataset.day));
+});
 
 // Eigene Tauchgänge laufen neben der Vorhersage her und dürfen sie nie aufhalten
 async function loadOwnDives(spot) {
@@ -785,7 +898,8 @@ settingsForm.addEventListener('submit', (e) => {
   state.settings = { ...state.settings, thresholds };
   saveSettings(state.settings);
   dlgSettings.close();
-  if (state.data) render();
+  if (isOverview()) load();
+  else if (state.data) render();
 });
 
 $('#btn-export').addEventListener('click', () => {
@@ -814,7 +928,7 @@ $('#file-import').addEventListener('change', async (e) => {
       renderSettingsGrids(state.settings.thresholds);
     }
     renderChips();
-    if (!selectedSpot()) selectSpot(spots[0].id);
+    if (!hasSelection()) selectSpot(spots[0].id);
   } catch (err) {
     alert(`Import fehlgeschlagen: ${err.message}`);
   }
@@ -826,7 +940,7 @@ $('#btn-examples').addEventListener('click', () => {
   state.spots.push(...structuredClone(missing));
   saveSpots(state.spots);
   renderChips();
-  if (!selectedSpot()) selectSpot(missing[0].id);
+  if (!hasSelection()) selectSpot(missing[0].id);
 });
 
 document.querySelectorAll('dialog [data-close]').forEach((btn) => btn.addEventListener('click', () => btn.closest('dialog').close()));
@@ -1034,7 +1148,7 @@ $('#btn-lb-apply').addEventListener('click', () => {
   saveSpots(state.spots);
   dlgLb.close();
   if (added.length) selectSpot(added[0].id);
-  else if (!selectedSpot()) selectSpot(state.spots[0]?.id ?? null);
+  else if (!hasSelection()) selectSpot(state.spots[0]?.id ?? null);
   else renderChips();
 });
 
@@ -1120,7 +1234,7 @@ window.addEventListener('online', () => state.data?.stale && load(true));
 // Systemwechsel nur übernehmen, wenn „Automatisch“ gewählt ist
 darkQuery.addEventListener('change', () => themeChoice() === 'system' && applyTheme());
 
-if (!selectedSpot()) state.selectedId = state.spots[0]?.id ?? null;
+if (!hasSelection()) state.selectedId = state.spots[0]?.id ?? null;
 renderChips();
 load();
 syncLogbook();

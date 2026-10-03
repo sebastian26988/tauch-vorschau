@@ -535,3 +535,30 @@ input[type='radio'], input[type='checkbox'] { accent-color: var(--accent); margi
 }
 
 .detail-ok { margin: 8px 0 0; }
+
+/* ---------- Übersicht aller Plätze ---------- */
+
+.chip-overview svg { opacity: 1; }
+.ov-card { padding: 0; overflow: hidden; }
+.ov-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.ov-table { width: 100%; border-collapse: separate; border-spacing: 4px; font-size: 13px; }
+.ov-table th { font-weight: 600; text-align: left; padding: 6px 4px; white-space: nowrap; }
+.ov-table thead th, .ov-table tr:first-child th { color: var(--text-muted); font-size: 12px; }
+/* Platzname bleibt beim seitlichen Wischen stehen */
+.ov-spot { position: sticky; left: 0; z-index: 1; background: var(--surface, var(--bg)); min-width: 130px; max-width: 200px; }
+.ov-name { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: pointer; white-space: normal; }
+.ov-name:hover { color: var(--accent); }
+.ov-spot .tag { display: block; font-size: 11px; font-weight: 500; color: var(--text-muted); }
+.ov-table td { padding: 0; min-width: 92px; }
+.ov-cell {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  width: 100%; min-height: 48px; padding: 6px 8px;
+  border: 2px solid transparent; border-radius: 8px;
+  background: var(--lvl-bg); color: var(--lvl); font: inherit; text-align: left; cursor: pointer;
+}
+.ov-cell:hover { filter: brightness(0.97); }
+.ov-cell.best { border-color: var(--lvl); }
+.ov-level { font-weight: 650; font-size: 12.5px; }
+.ov-reason { font-size: 11.5px; color: var(--text); opacity: 0.8; white-space: nowrap; }
+.ov-legend { padding: 0 12px 12px; margin: 0; }
+@media (max-width: 520px) { .ov-spot { min-width: 108px; } .ov-table td { min-width: 86px; } }
